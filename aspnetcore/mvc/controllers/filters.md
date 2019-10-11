@@ -1,7 +1,7 @@
 ---
-title: ASP.NET Core 中的動作篩選器
+title: ASP.NET Core 中的篩選器
 author: ardalis
-description: 了解動作篩選器的運作方式，以及如何在 ASP.NET Core 中使用它們。
+description: 了解篩選器的運作方式，以及如何在 ASP.NET Core 中使用它們。
 ms.author: riande
 ms.custom: mvc
 ms.date: 05/08/2019
@@ -13,88 +13,88 @@ ms.contentlocale: zh-TW
 ms.lasthandoff: 07/12/2019
 ms.locfileid: "67856151"
 ---
-# <a name="filters-in-aspnet-core"></a>ASP.NET Core 中的動作篩選器
+# <a name="filters-in-aspnet-core"></a>ASP.NET Core 中的篩選器
 
 作者：[Kirk Larkin](https://github.com/serpent5) \(英文\)、[Rick Anderson](https://twitter.com/RickAndMSFT) \(英文\)、[Tom Dykstra](https://github.com/tdykstra/) \(英文\) 及 [Steve Smith](https://ardalis.com/) \(英文\)
 
-ASP.NET Core 中的「動作篩選器」可讓程式碼在要求處理管線中的特定階段之前或之後執行。
+ASP.NET Core 中的「篩選器」可讓程式碼在要求處理管線中的特定階段之前或之後執行。
 
-內建動作篩選器會處理工作，例如：
+內建篩選器會處理工作，例如：
 
 * 授權 (避免存取使用者未獲授權的資源)。
 * 回應快取 (縮短要求管線，傳回快取的回應)。
 
-可以建立自訂動作篩選器來處理跨領域關注。 跨領域關注的範例包括錯誤處理、快取、設定、授權及記錄。  篩選能避免重複的程式碼。 例如，錯誤處理例外狀況動作篩選器中可以合併錯誤處理。
+可以建立自訂篩選器來處理跨領域關注。 跨領域關注的範例包括錯誤處理、快取、設定、授權及記錄。  篩選能避免重複的程式碼。 例如，錯誤處理例外狀況篩選器中可以合併錯誤處理。
 
 本文件適用於 Razor Pages、API 控制器，以及具有檢視的控制器。
 
 [檢視或下載範例](https://github.com/aspnet/AspNetCore.Docs/tree/master/aspnetcore/mvc/controllers/filters/sample) \(英文\) ([如何下載](xref:index#how-to-download-a-sample))。
 
-## <a name="how-filters-work"></a>動作篩選器如何運作
+## <a name="how-filters-work"></a>篩選器如何運作
 
-動作篩選器會在「ASP.NET Core 動作引動過程管線」中執行，其有時也被稱為「動作篩選器管線」。  在 ASP.NET Core 之後執行的動作篩選器管線會選取要執行的動作。
+篩選器會在「ASP.NET Core 動作引動過程管線」中執行，其有時也被稱為「篩選器管線」。  在 ASP.NET Core 之後執行的篩選器管線會選取要執行的動作。
 
 ![要求處理會歷經其他中介軟體、路由中介軟體、動作選取和 ASP.NET Core 動作引動過程管線。 要求處理繼續往回歷經動作選取、路由中介軟體，以及各種其他中介軟體，然後才能成為傳送至用戶端的回應。](filters/_static/filter-pipeline-1.png)
 
-### <a name="filter-types"></a>動作篩選器類型
+### <a name="filter-types"></a>篩選器類型
 
-每個篩選類型會在動作篩選器管線中的不同階段執行：
+每個篩選類型會在篩選器管線中的不同階段執行：
 
-* [授權動作篩選器](#authorization-filters)會先執行，用來判斷使用者是否已針對要求取得授權。 如果要求未經授權，授權動作篩選器便會縮短管線。
+* [授權篩選器](#authorization-filters)會先執行，用來判斷使用者是否已針對要求取得授權。 如果要求未經授權，授作篩選器便會縮短管線。
 
-* [資源動作篩選器](#resource-filters)：
+* [資源篩選器](#resource-filters)：
 
   * 會在授權之後執行。  
-  * <xref:Microsoft.AspNetCore.Mvc.Filters.IResourceFilter.OnResourceExecuting*> 可以在其餘的動作篩選器管線之前執行程式碼。 例如，`OnResourceExecuting` 可以在模型繫結之前執行程式碼。
+  * <xref:Microsoft.AspNetCore.Mvc.Filters.IResourceFilter.OnResourceExecuting*> 可以在其餘的篩選器管線之前執行程式碼。 例如，`OnResourceExecuting` 可以在模型繫結之前執行程式碼。
   * <xref:Microsoft.AspNetCore.Mvc.Filters.IResourceFilter.OnResourceExecuted*> 可以在其餘的管線皆已完成之後執行程式碼。
 
-* [動作動作篩選器](#action-filters)可以緊接在呼叫個別動作方法之前和之後執行程式碼。 它們可以用來處理傳遞至動作的引數，和從動作傳回的結果。 Razor Pages 中**不**支援動作動作篩選器。
+* [動作篩選器](#action-filters)可以緊接在呼叫個別動作方法之前和之後執行程式碼。 它們可以用來處理傳遞至動作的引數，和從動作傳回的結果。 Razor Pages 中**不**支援動作篩選器。
 
-* [例外狀況動作篩選器](#exception-filters)用來將通用原則套用到在任何項目寫入回應主體之前，發生的未處理例外狀況。
+* [例外狀況篩選器](#exception-filters)用來將通用原則套用到在任何項目寫入回應主體之前，發生的未處理例外狀況。
 
-* [結果動作篩選器](#result-filters)可以緊接在執行個別動作結果之前和之後執行程式碼。 它們只有在動作方法執行成功時才執行。 它們適用於必須包圍檢視或格式器執行的邏輯。
+* [結果篩選器](#result-filters)可以緊接在執行個別動作結果之前和之後執行程式碼。 它們只有在動作方法執行成功時才執行。 它們適用於必須包圍檢視或格式器執行的邏輯。
 
-下圖顯示動作篩選器類型如何在動作篩選器管線中互動。
+下圖顯示篩選器類型如何在篩選器管線中互動。
 
-![要求處理會歷經授權動作篩選器、資源動作篩選器、模型繫結、動作動作篩選器、動作執行和動作結果轉換、例外狀況動作篩選器、結果動作篩選器，以及結果執行。 在送出的過程，要求只會經過結果動作篩選器和資源動作篩選器的處理，然後便成為傳送至用戶端的回應。](filters/_static/filter-pipeline-2.png)
+![要求處理會歷經授權篩選器、資源篩選器、模型繫結、動作篩選器、動作執行和動作結果轉換、例外狀況篩選器、結果篩選器，以及結果執行。 在送出的過程，要求只會經過結果篩選器和資源篩選器的處理，然後便成為傳送至用戶端的回應。](filters/_static/filter-pipeline-2.png)
 
 ## <a name="implementation"></a>實作
 
-動作篩選器同時支援透過不同介面定義的同步和非同步實作。
+篩選器同時支援透過不同介面定義的同步和非同步實作。
 
-同步動作篩選器可以在其管線階段之前 (`On-Stage-Executing`) 和之後 (`On-Stage-Executed`) 執行程式碼。 例如，系統會在呼叫動作方法之前呼叫 `OnActionExecuting`。 系統會在傳回動作方法之後呼叫 `OnActionExecuted`。
+同步篩選器可以在其管線階段之前 (`On-Stage-Executing`) 和之後 (`On-Stage-Executed`) 執行程式碼。 例如，系統會在呼叫動作方法之前呼叫 `OnActionExecuting`。 系統會在傳回動作方法之後呼叫 `OnActionExecuted`。
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/MySampleActionFilter.cs?name=snippet_ActionFilter)]
 
-非同步動作篩選器會定義 `On-Stage-ExecutionAsync` 方法：
+非同步篩選器會定義 `On-Stage-ExecutionAsync` 方法：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/SampleAsyncActionFilter.cs?name=snippet)]
 
-在上述程式碼中，`SampleAsyncActionFilter` 具有會執行動作方法的 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutionDelegate> (`next`)。  每個 `On-Stage-ExecutionAsync` 都會接受能執行動作篩選器之管線階段的 `FilterType-ExecutionDelegate`。
+在上述程式碼中，`SampleAsyncActionFilter` 具有會執行動作方法的 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutionDelegate> (`next`)。  每個 `On-Stage-ExecutionAsync` 都會接受能執行篩選器之管線階段的 `FilterType-ExecutionDelegate`。
 
-### <a name="multiple-filter-stages"></a>多個動作篩選器階段
+### <a name="multiple-filter-stages"></a>多個篩選器階段
 
-可以在單一類別中實作多個動作篩選器階段的介面。 例如，<xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute> 類別會實作 `IActionFilter`、`IResultFilter` 與其非同步對等項目。
+可以在單一類別中實作多個篩選器階段的介面。 例如，<xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute> 類別會實作 `IActionFilter`、`IResultFilter` 與其非同步對等項目。
 
-請實作同步**或**非同步版本的動作篩選器介面，而**不要**同時實作這兩者。 執行階段會先檢查以查看動作篩選器是否會實作非同步介面，如果是，便會呼叫該介面。 如果沒有，它會呼叫同步介面的方法。 如果同時在單一類別中實作非同步和同步介面，系統只會呼叫非同步方法。 使用抽象類別 (例如 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute>) 時，請僅覆寫每個動作篩選器類型的同步方法或非同步方法。
+請實作同步**或**非同步版本的篩選器介面，而**不要**同時實作這兩者。 執行階段會先檢查以查看篩選器是否會實作非同步介面，如果是，便會呼叫該介面。 如果沒有，它會呼叫同步介面的方法。 如果同時在單一類別中實作非同步和同步介面，系統只會呼叫非同步方法。 使用抽象類別 (例如 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute>) 時，請僅覆寫每個篩選器類型的同步方法或非同步方法。
 
-### <a name="built-in-filter-attributes"></a>內建動作篩選器屬性
+### <a name="built-in-filter-attributes"></a>內建篩選器屬性
 
-ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別化和自訂。 例如，下列結果動作篩選器會將標頭新增至回應：
+ASP.NET Core 包含內建的屬性型篩選器，可對其進行子類別化和自訂。 例如，下列結果篩選器會將標頭新增至回應：
 
 <a name="add-header-attribute"></a>
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/AddHeaderAttribute.cs?name=snippet)]
 
-屬性可讓動作篩選器接受引數，如上述範例所示。 將 `AddHeaderAttribute` 新增至控制器或動作方法，並指定 HTTP 標頭的名稱和值：
+屬性可讓篩選器接受引數，如上述範例所示。 將 `AddHeaderAttribute` 新增至控制器或動作方法，並指定 HTTP 標頭的名稱和值：
 
 [!code-csharp[](./filters/sample/FiltersSample/Controllers/SampleController.cs?name=snippet_AddHeader&highlight=1)]
 
 <!-- `https://localhost:5001/Sample` -->
 
-有幾個動作篩選器介面有對應的屬性，可用來作為自訂實作的基底類別。
+有幾個篩選器介面有對應的屬性，可用來作為自訂實作的基底類別。
 
-動作篩選器屬性：
+篩選器屬性：
 
 * <xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute>
 * <xref:Microsoft.AspNetCore.Mvc.Filters.ExceptionFilterAttribute>
@@ -103,9 +103,9 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
 * <xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute>
 * <xref:Microsoft.AspNetCore.Mvc.TypeFilterAttribute>
 
-## <a name="filter-scopes-and-order-of-execution"></a>動作篩選器範圍和執行的順序
+## <a name="filter-scopes-and-order-of-execution"></a>篩選器範圍和執行的順序
 
-動作篩選器能以三個「範圍」之一新增至管線：
+篩選器能以三個「範圍」之一新增至管線：
 
 * 針對動作使用屬性。
 * 針對控制器使用屬性。
@@ -113,24 +113,24 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
 
 [!code-csharp[](./filters/sample/FiltersSample/StartupGF.cs?name=snippet_ConfigureServices)]
 
-上述程式碼會使用 [MvcOptions.Filters](xref:Microsoft.AspNetCore.Mvc.MvcOptions.Filters) 集合來全域地新增三個動作篩選器。
+上述程式碼會使用 [MvcOptions.Filters](xref:Microsoft.AspNetCore.Mvc.MvcOptions.Filters) 集合來全域地新增三個篩選器。
 
 ### <a name="default-order-of-execution"></a>預設執行順序
 
-當管線的特定階段有多個動作篩選器時，範圍會決定動作篩選器的預設執行順序。  全域動作篩選器會圍繞類別動作篩選器，後者又圍繞方法動作篩選器。
+當管線的特定階段有多個篩選器時，範圍會決定篩選器的預設執行順序。  全域篩選器會圍繞類別篩選器，後者又圍繞方法篩選器。
 
-因為動作篩選器巢狀結構的原因，動作篩選器的「之後」程式碼的執行順序會與「之前」程式碼相反。 動作篩選器序列：
+因為篩選器巢狀結構的原因，篩選器的「之後」程式碼的執行順序會與「之前」程式碼相反。 篩選器序列：
 
-* 全域動作篩選器的「之前」程式碼。
-  * 控制器動作篩選器的「之前」程式碼。
-    * 動作方法動作篩選器的「之前」程式碼。
-    * 動作方法動作篩選器的「之後」程式碼。
-  * 控制器動作篩選器的「之後」程式碼。
-* 全域動作篩選器的「之後」程式碼。
+* 全域篩選器的「之前」程式碼。
+  * 控制器篩選器的「之前」程式碼。
+    * 動作方法篩選器的「之前」程式碼。
+    * 動作方法篩選器的「之後」程式碼。
+  * 控制器篩選器的「之後」程式碼。
+* 全域篩選器的「之後」程式碼。
   
-下列範例說明針對同步動作動作篩選器呼叫動作篩選器方法的順序。
+下列範例說明針對同步動作篩選器呼叫篩選器方法的順序。
 
-| 序列 | 動作篩選器範圍 | 動作篩選器方法 |
+| 序列 | 篩選器範圍 | 篩選器方法 |
 |:--------:|:------------:|:-------------:|
 | 1 | Global | `OnActionExecuting` |
 | 2 | 控制器 | `OnActionExecuting` |
@@ -141,18 +141,18 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
 
 此順序顯示：
 
-* 方法動作篩選器巢狀位於控制器動作篩選器內。
-* 控制器動作篩選器巢狀位於全域動作篩選器內。
+* 方法篩選器巢狀位於控制器篩選器內。
+* 控制器篩選器巢狀位於全域篩選器內。
 
-### <a name="controller-and-razor-page-level-filters"></a>控制器和 Razor 頁面層級動作篩選器
+### <a name="controller-and-razor-page-level-filters"></a>控制器和 Razor 頁面層級篩選器
 
 繼承自 <xref:Microsoft.AspNetCore.Mvc.Controller> 基底類別的每個控制器都會包含 [Controller.OnActionExecuting](xref:Microsoft.AspNetCore.Mvc.Controller.OnActionExecuting*)、[Controller.OnActionExecutionAsync](xref:Microsoft.AspNetCore.Mvc.Controller.OnActionExecutionAsync*)，以及 [Controller.OnActionExecuted](xref:Microsoft.AspNetCore.Mvc.Controller.OnActionExecuted*)
 `OnActionExecuted` 方法。 這些方法會：
 
-* 包裝針對指定動作執行的動作篩選器。
-* 系統會在呼叫任何動作的動作篩選器之前呼叫 `OnActionExecuting`。
-* 系統會在呼叫所有動作動作篩選器之後呼叫 `OnActionExecuted`。
-* 系統會在呼叫任何動作的動作篩選器之前呼叫 `OnActionExecutionAsync`。 在動作方法之後執行 `next` 後，位於動作篩選器中的程式碼。
+* 包裝針對指定動作執行的篩選器。
+* 系統會在呼叫任何動作的篩選器之前呼叫 `OnActionExecuting`。
+* 系統會在呼叫所有動作篩選器之後呼叫 `OnActionExecuted`。
+* 系統會在呼叫任何動作的篩選器之前呼叫 `OnActionExecutionAsync`。 在動作方法之後執行 `next` 後，位作篩選器中的程式碼。
 
 例如，在下載範例中，`MySampleActionFilter` 會在啟動時全域套用。
 
@@ -173,14 +173,14 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
   * `MySampleActionFilter.OnActionExecuted`
 * `TestController.OnActionExecuted`
 
-針對 Razor Pages，請參閱[覆寫動作篩選器方法來實作 Razor 頁面動作篩選器](xref:razor-pages/filter#implement-razor-page-filters-by-overriding-filter-methods)。
+針對 Razor Pages，請參閱[覆寫篩選器方法來實作 Razor 頁面篩選器](xref:razor-pages/filter#implement-razor-page-filters-by-overriding-filter-methods)。
 
 ### <a name="overriding-the-default-order"></a>覆寫預設順序
 
-可以藉由實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IOrderedFilter> 來覆寫預設執行序列。 `IOrderedFilter` 會公開 <xref:Microsoft.AspNetCore.Mvc.Filters.IOrderedFilter.Order> 屬性，其優先順序會高於範圍以決定執行順序。 具有較低 `Order` 值的動作篩選器：
+可以藉由實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IOrderedFilter> 來覆寫預設執行序列。 `IOrderedFilter` 會公開 <xref:Microsoft.AspNetCore.Mvc.Filters.IOrderedFilter.Order> 屬性，其優先順序會高於範圍以決定執行順序。 具有較低 `Order` 值的篩選器：
 
-* 在具有較高 `Order` 值的動作篩選器之前執行「之前」程式碼。
-* 在具有較高 `Order` 值的動作篩選器之後執行「之後」程式碼。
+* 在具有較高 `Order` 值的篩選器之前執行「之前」程式碼。
+* 在具有較高 `Order` 值的篩選器之後執行「之後」程式碼。
 
 `Order` 屬性可以搭配建構函式參數設定：
 
@@ -188,9 +188,9 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
 [MyFilter(Name = "Controller Level Attribute", Order=1)]
 ```
 
-請考慮先前範例所示的同樣 3 個動作動作篩選器。 如果控制器和全域動作篩選器的 `Order` 屬性被個別設定為 1 和 2，執行順序將會反轉。
+請考慮先前範例所示的同樣 3 個動作篩選器。 如果控制器和全域篩選器的 `Order` 屬性被個別設定為 1 和 2，執行順序將會反轉。
 
-| 序列 | 動作篩選器範圍 | `Order` 屬性 | 動作篩選器方法 |
+| 序列 | 篩選器範圍 | `Order` 屬性 | 篩選器方法 |
 |:--------:|:------------:|:-----------------:|:-------------:|
 | 1 | 方法 | 0 | `OnActionExecuting` |
 | 2 | 控制器 | 1  | `OnActionExecuting` |
@@ -199,53 +199,53 @@ ASP.NET Core 包含內建的屬性型動作篩選器，可對其進行子類別�
 | 5 | 控制器 | 1  | `OnActionExecuted` |
 | 6 | 方法 | 0  | `OnActionExecuted` |
 
-`Order` 屬性在決定動作篩選器執行的順序時會覆寫範圍。 動作篩選器會先依照順序排序，然後使用範圍來打破僵局。 所有內建的動作篩選器都會實作 `IOrderedFilter` 並將預設 `Order` 值設為 0。 針對內建動作篩選器，除非將 `Order` 設定為非零值，否則範圍會決定順序。
+`Order` 屬性在決定篩選器執行的順序時會覆寫範圍。 篩選器會先依照順序排序，然後使用範圍來打破僵局。 所有內建作篩選器都會實作 `IOrderedFilter` 並將預設 `Order` 值設為 0。 針對內建篩選器，除非將 `Order` 設定為非零值，否則範圍會決定順序。
 
 ## <a name="cancellation-and-short-circuiting"></a>取消和縮短
 
-可以設定提供給動作篩選器方法之 <xref:Microsoft.AspNetCore.Mvc.Filters.ResourceExecutingContext> 參數上的 <xref:Microsoft.AspNetCore.Mvc.Filters.ResourceExecutingContext.Result> 屬性，以縮短動作篩選器管線。 比方說，下列資源動作篩選器可防止管線的其餘部分執行：
+可以設定提供給篩選器方法之 <xref:Microsoft.AspNetCore.Mvc.Filters.ResourceExecutingContext> 參數上的 <xref:Microsoft.AspNetCore.Mvc.Filters.ResourceExecutingContext.Result> 屬性，以縮短篩選器管線。 比方說，下列資源篩選器可防止管線的其餘部分執行：
 
 <a name="short-circuiting-resource-filter"></a>
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/ShortCircuitingResourceFilterAttribute.cs?name=snippet)]
 
-在下列程式碼中，`ShortCircuitingResourceFilter` 和 `AddHeader` 動作篩選器都以 `SomeResource` 動作方法為目標。 `ShortCircuitingResourceFilter`：
+在下列程式碼中，`ShortCircuitingResourceFilter` 和 `AddHeader` 篩選器都以 `SomeResource` 動作方法為目標。 `ShortCircuitingResourceFilter`：
 
-* 最先執行，因為它是資源動作篩選器，且 `AddHeader` 是動作動作篩選器。
+* 最先執行，因為它是資源篩選器，且 `AddHeader` 是動作篩選器。
 * 縮短管線的其餘部分。
 
-因此，`SomeResource` 動作的 `AddHeader` 動作篩選器永遠不會執行。 如果這兩個動作篩選器都套用在動作方法層級，此行為也會相同，假設 `ShortCircuitingResourceFilter` 先執行的話。 `ShortCircuitingResourceFilter` 會因為其篩選器類型而先執行，或藉由明確使用 `Order` 屬性而先執行。
+因此，`SomeResource` 動作的 `AddHeader` 篩選器永遠不會執行。 如果這兩個篩選器都套用在動作方法層級，此行為也會相同，假設 `ShortCircuitingResourceFilter` 先執行的話。 `ShortCircuitingResourceFilter` 會因為其篩選器類型而先執行，或藉由明確使用 `Order` 屬性而先執行。
 
 [!code-csharp[](./filters/sample/FiltersSample/Controllers/SampleController.cs?name=snippet_AddHeader&highlight=1,9)]
 
 ## <a name="dependency-injection"></a>相依性插入
 
-可以依類型或執行個體新增動作篩選器。 如果新增執行個體，該執行個體將用於每個要求。 如果新增類型，其將會由類型啟動。 由類型啟動的動作篩選器表示：
+可以依類型或執行個體新增篩選器。 如果新增執行個體，該執行個體將用於每個要求。 如果新增類型，其將會由類型啟動。 由類型啟動的篩選器表示：
 
 * 系統會針對每個要求建立執行個體。
 * 任何建構函式相依性都會由[相依性插入](xref:fundamentals/dependency-injection) (DI) 所填入。
 
-實作為屬性並直接新增至控制器類別或動作方法的動作篩選器，不能由[相依性插入](xref:fundamentals/dependency-injection) (DI) 提供建構函式相依性。 DI 無法提供建構函式相依性，因為：
+實作為屬性並直接新增至控制器類別或動作方法的篩選器，不能由[相依性插入](xref:fundamentals/dependency-injection) (DI) 提供建構函式相依性。 DI 無法提供建構函式相依性，因為：
 
 * 必須在提供屬性之建構函式參數的地方提供它們。 
 * 這是屬性運作方式的限制。
 
-下列動作篩選器支援由 DI 所提供的建構函式相依性：
+下列篩選器支援由 DI 所提供的建構函式相依性：
 
 * <xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute>
 * <xref:Microsoft.AspNetCore.Mvc.TypeFilterAttribute>
 * 在屬性上實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory>。
 
-上述動作篩選器可以被套用至控制器或動作方法：
+上述篩選器可以被套用至控制器或動作方法：
 
-DI 會提供記錄器。 不過，請避免僅針對記錄目的建立並使用動作篩選器。 [內建架構記錄](xref:fundamentals/logging/index)通常便可以提供記錄所需的項目。 新增至動作篩選器的記錄：
+DI 會提供記錄器。 不過，請避免僅針對記錄目的建立並使用篩選器。 [內建架構記錄](xref:fundamentals/logging/index)通常便可以提供記錄所需的項目。 新增至篩選器的記錄：
 
-* 應該專注在動作篩選器特定的商務領域考量或行為。
-* **不**應該記錄動作或其他架構事件。 內建動作篩選器能記錄動作和架構事件。
+* 應該專注在篩選器特定的商務領域考量或行為。
+* **不**應該記錄動作或其他架構事件。 內建篩選器能記錄動作和架構事件。
 
 ### <a name="servicefilterattribute"></a>ServiceFilterAttribute
 
-服務動作篩選器實作類型會註冊在 `ConfigureServices` 中。 <xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute> 會從 DI 擷取動作篩選器的執行個體。
+服務篩選器實作類型會註冊在 `ConfigureServices` 中。 <xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute> 會從 DI 擷取篩選器的執行個體。
 
 下面程式碼會說明 `AddHeaderResultServiceFilter`：
 
@@ -255,18 +255,18 @@ DI 會提供記錄器。 不過，請避免僅針對記錄目的建立並使用�
 
 [!code-csharp[](./filters/sample/FiltersSample/Startup.cs?name=snippet_ConfigureServices&highlight=4)]
 
-在下列程式碼中，`ServiceFilter` 屬性會從 DI 擷取 `AddHeaderResultServiceFilter` 動作篩選器的執行個體：
+在下列程式碼中，`ServiceFilter` 屬性會從 DI 擷取 `AddHeaderResultServiceFilter` 篩選器的執行個體：
 
 [!code-csharp[](./filters/sample/FiltersSample/Controllers/HomeController.cs?name=snippet_ServiceFilter&highlight=1)]
 
 使用 `ServiceFilterAttribute` 時，設定 [ServiceFilterAttribute.IsReusable](xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute.IsReusable)：
 
-* 能提供動作篩選器執行個體「可能」可以在其建立的要求範圍之外重複使用的提示。 ASP.NET Core 執行階段並不保證：
+* 能提供篩選器執行個體「可能」可以在其建立的要求範圍之外重複使用的提示。 ASP.NET Core 執行階段並不保證：
 
-  * 將會建立動作篩選器的單一執行個體。
-  * 將不會於稍後的時間從 DI 容器重新要求動作篩選器。
+  * 將會建立篩選器的單一執行個體。
+  * 將不會於稍後的時間從 DI 容器重新要求篩選器。
 
-* 不應該搭配仰賴具有非單一資料庫存留期之服務的動作篩選器使用。
+* 不應該搭配仰賴具有非單一資料庫存留期之服務的篩選器使用。
 
  <xref:Microsoft.AspNetCore.Mvc.ServiceFilterAttribute> 會實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory>。 `IFilterFactory` 會公開 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory.CreateInstance*> 方法來建立 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata> 執行個體。 `CreateInstance` 會從 DI 載入指定的類型。
 
@@ -280,9 +280,9 @@ DI 會提供記錄器。 不過，請避免僅針對記錄目的建立並使用�
 * `TypeFilterAttribute` 可以選擇性地接受類型的建構函式引數。
 
 使用 `TypeFilterAttribute` 時，設定 [TypeFilterAttribute.IsReusable](xref:Microsoft.AspNetCore.Mvc.TypeFilterAttribute.IsReusable)：
-* 能提供動作篩選器執行個體「可能」可以在其建立的要求範圍之外重複使用的提示。 ASP.NET Core 執行階段不保證將建立動作篩選器的單一執行個體。
+* 能提供篩選器執行個體「可能」可以在其建立的要求範圍之外重複使用的提示。 ASP.NET Core 執行階段不保證將建作篩選器的單一執行個體。
 
-* 不應該搭配仰賴具有非單一資料庫存留期之服務的動作篩選器使用。
+* 不應該搭配仰賴具有非單一資料庫存留期之服務的篩選器使用。
 
 下列範例示範如何使用 `TypeFilterAttribute` 將引數傳遞至類型：
 
@@ -295,57 +295,57 @@ VS debug window shows
 FiltersSample.Filters.LogConstantFilter:Information: Method 'Hi' called
 -->
 
-## <a name="authorization-filters"></a>授權動作篩選器
+## <a name="authorization-filters"></a>授權篩選器
 
-授權動作篩選器：
+授權篩選器：
 
-* 是動作篩選器管線內最先執行的動作篩選器。
+* 是篩選器管線內最先執行的篩選器。
 * 控制動作方法的存取。
 * 有之前的方法，但沒有之後的方法。
 
-自訂授權動作篩選器需要自訂的授權架構。 最好是設定授權原則或撰寫自訂授權原則，而不要撰寫自訂動作篩選器。 內建的授權動作篩選器：
+自訂授權篩選器需要自訂的授權架構。 最好是設定授權原則或撰寫自訂授權原則，而不要撰寫自訂篩選器。 內建的授作篩選器：
 
 * 呼叫授權系統。
 * 不會授權要求。
 
-**不會**在授權動作篩選器內擲回例外狀況：
+**不會**在授權篩選器內擲回例外狀況：
 
 * 該例外狀況將不會被處理。
-* 例外狀況動作篩選器將不會處理例外狀況。
+* 例外狀況篩選器將不會處理例外狀況。
 
-請考慮在例外狀況於授權動作篩選器中發生時發出挑戰。
+請考慮在例外狀況於授權篩選器中發生時發出挑戰。
 
 深入了解[授權](xref:security/authorization/introduction)。
 
-## <a name="resource-filters"></a>資源動作篩選器
+## <a name="resource-filters"></a>資源篩選器
 
-資源動作篩選器：
+資源篩選器：
 
 * 實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IResourceFilter> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncResourceFilter> 介面。
-* 執行會包裝大部分的動作篩選器管線。
-* 只有[授權動作篩選器](#authorization-filters)會在資源動作篩選器之前執行。
+* 執行會包裝大部分的篩選器管線。
+* 只有[授權篩選器](#authorization-filters)會在資源篩選器之前執行。
 
-資源動作篩選器很適合用來縮短大部分的管線。 比方說，快取動作篩選器可以避免快取命中上的其餘管線。
+資源篩選器很適合用來縮短大部分的管線。 比方說，快取篩選器可以避免快取命中上的其餘管線。
 
-資源動作篩選器範例：
+資源篩選器範例：
 
-* 先前所示的[縮短資源動作篩選器](#short-circuiting-resource-filter)。
+* 先前所示的[縮短資源篩選器](#short-circuiting-resource-filter)。
 * [DisableFormValueModelBindingAttribute](https://github.com/aspnet/Entropy/blob/rel/2.0.0-preview2/samples/Mvc.FileUpload/Filters/DisableFormValueModelBindingAttribute.cs) \(英文\)：
 
   * 防止模型繫結存取表單資料。
   * 用於大型檔案上傳，以避免將表單資料讀入記憶體。
 
-## <a name="action-filters"></a>動作動作篩選器
+## <a name="action-filters"></a>動作篩選器
 
 > [!IMPORTANT]
-> 動作動作篩選器**不會**套用到 Razor Pages。 Razor Pages 支援 <xref:Microsoft.AspNetCore.Mvc.Filters.IPageFilter> 與 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncPageFilter>。 如需詳細資訊，請參閱 [Razor 頁面的動作篩選器方法](xref:razor-pages/filter)。
+> 動作篩選器**不會**套用到 Razor Pages。 Razor Pages 支援 <xref:Microsoft.AspNetCore.Mvc.Filters.IPageFilter> 與 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncPageFilter>。 如需詳細資訊，請參閱 [Razor 頁面的篩選器方法](xref:razor-pages/filter)。
 
-動作動作篩選器：
+動作篩選器：
 
 * 實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IActionFilter> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncActionFilter> 介面。
 * 它們執行會包圍動作方法的執行。
 
-下列程式碼會顯示範例動作動作篩選器：
+下列程式碼會顯示範例動作篩選器：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/MySampleActionFilter.cs?name=snippet_ActionFilter)]
 
@@ -353,31 +353,31 @@ FiltersSample.Filters.LogConstantFilter:Information: Method 'Hi' called
 
 * <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext.ActionArguments> - 讓針對某個動作方法的輸入可以被讀取。
 * <xref:Microsoft.AspNetCore.Mvc.Controller> - 提供對控制器執行個體的管理。
-* <xref:System.Web.Mvc.ActionExecutingContext.Result> - 設定 `Result` 會縮短動作方法和後續動作動作篩選器的執行。
+* <xref:System.Web.Mvc.ActionExecutingContext.Result> - 設定 `Result` 會縮短動作方法和後續動作篩選器的執行。
 
 在動作方法中擲回例外狀況：
 
-* 防止執行後續動作篩選器。
+* 防止執行後續篩選器。
 * 和設定 `Result` 不同，會被視為失敗而非成功結果。
 
 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext> 提供 `Controller` 與 `Result`，加上下列屬性：
 
-* <xref:System.Web.Mvc.ActionExecutedContext.Canceled> - 如果動作執行被另一個動作篩選器縮短，則為 true。
-* <xref:System.Web.Mvc.ActionExecutedContext.Exception> - 如果動作或先前所執行的動作動作篩選器擲回例外狀況，則為非 Null。 將此屬性設定為 Null：
+* <xref:System.Web.Mvc.ActionExecutedContext.Canceled> - 如果動作執行被另一個篩選器縮短，則為 true。
+* <xref:System.Web.Mvc.ActionExecutedContext.Exception> - 如果動作或先前所執行的動作篩選器擲回例外狀況，則為非 Null。 將此屬性設定為 Null：
 
   * 實際上會「處理」例外狀況。
   * 會執行 `Result`，有如它是從動作方法傳回一般。
 
 對於 `IAsyncActionFilter`，呼叫 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutionDelegate> 會：
 
-* 執行任何後續的動作動作篩選器和動作方法。
+* 執行任何後續的動作篩選器和動作方法。
 * 傳回 `ActionExecutedContext`。
 
 若要縮短，請指派 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext.Result?displayProperty=fullName> 給某個結果執行個體，並且不要呼叫 `next` (`ActionExecutionDelegate`)。
 
 架構提供抽象 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionFilterAttribute>，其可被子類別化。
 
-`OnActionExecuting` 動作動作篩選器可以用來：
+`OnActionExecuting` 動作篩選器可以用來：
 
 * 驗證模型狀態。
 * 如果狀態無效，則傳回錯誤。
@@ -387,44 +387,44 @@ FiltersSample.Filters.LogConstantFilter:Information: Method 'Hi' called
 `OnActionExecuted` 方法會在動作方法之後執行：
 
 * 並可以透過 <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext.Result> 屬性查看及操作動作的結果。
-* <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext.Canceled> 會在動作執行被另一個動作篩選器縮短時被設為 true。
-* <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext.Exception> 會在動作或後續的動作動作篩選器擲回例外狀況時被設為非 Null 值。 將 `Exception` 設定為 null：
+* <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext.Canceled> 會在動作執行被另一個篩選器縮短時被設為 true。
+* <xref:Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext.Exception> 會在動作或後續的動作篩選器擲回例外狀況時被設為非 Null 值。 將 `Exception` 設定為 null：
 
   * 實際上會「處理」例外狀況。
   * 執行 `ActionExecutedContext.Result`，彷彿它已正常地從動作方法傳回。
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/ValidateModelAttribute.cs?name=snippet2&higlight=12-99)]
 
-## <a name="exception-filters"></a>例外狀況動作篩選器
+## <a name="exception-filters"></a>例外狀況篩選器
 
-例外狀況動作篩選器：
+例外狀況篩選器：
 
 * 實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IExceptionFilter> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncExceptionFilter>。 
 * 可以用來實作常見的錯誤處理原則。
 
-下列範例例外狀況動作篩選器會使用自訂的錯誤檢視，以顯示在開發應用程式時發生的例外狀況詳細資料：
+下列範例例外狀況篩選器會使用自訂的錯誤檢視，以顯示在開發應用程式時發生的例外狀況詳細資料：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/CustomExceptionFilterAttribute.cs?name=snippet_ExceptionFilter&highlight=16-19)]
 
-例外狀況動作篩選器：
+例外狀況篩選器：
 
 * 沒有之前和之後的事件。
 * 實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IExceptionFilter.OnException*> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncExceptionFilter.OnExceptionAsync*>。
-* 處理在 Razor 頁面或控制器建立、[模型繫結](xref:mvc/models/model-binding)、動作動作篩選器或動作方法中發生的未處理例外狀況。
-* **不會**攔截在資源動作篩選器、結果動作篩選器或 MVC 結果執行中發生的例外狀況。
+* 處理在 Razor 頁面或控制器建立、[模型繫結](xref:mvc/models/model-binding)、動作篩選器或動作方法中發生的未處理例外狀況。
+* **不會**攔截在資源篩選器、結果篩選器或 MVC 結果執行中發生的例外狀況。
 
-若要處理例外狀況，請將 <xref:System.Web.Mvc.ExceptionContext.ExceptionHandled> 屬性設為 `true`，或撰寫回應。 這樣會阻止傳播例外狀況。 例外狀況動作篩選器無法將例外狀況變成「成功」。 只有動作動作篩選器可以這麼做。
+若要處理例外狀況，請將 <xref:System.Web.Mvc.ExceptionContext.ExceptionHandled> 屬性設為 `true`，或撰寫回應。 這樣會阻止傳播例外狀況。 例外狀況篩選器無法將例外狀況變成「成功」。 只有動作篩選器可以這麼做。
 
-例外狀況動作篩選器：
+例外狀況篩選器：
 
 * 適合用於設陷在動作內發生的例外狀況。
 * 不像錯誤處理中介軟體那麼有彈性。
 
-偏好使用中介軟體進行例外狀況處理。 只有在錯誤處理會根據所呼叫的動作方法而「不同」時才使用例外狀況動作篩選器。 比方說，應用程式可能會有適用於 API 端點及檢視/HTML 的動作方法。 API 端點可能將錯誤資訊傳回為 JSON，而以檢視為基礎的動作則可能將錯誤頁面傳回為 HTML。
+偏好使用中介軟體進行例外狀況處理。 只有在錯誤處理會根據所呼叫的動作方法而「不同」時才使用例外狀況篩選器。 比方說，應用程式可能會有適用於 API 端點及檢視/HTML 的動作方法。 API 端點可能將錯誤資訊傳回為 JSON，而以檢視為基礎的動作則可能將錯誤頁面傳回為 HTML。
 
-## <a name="result-filters"></a>結果動作篩選器
+## <a name="result-filters"></a>結果篩選器
 
-結果動作篩選器：
+結果篩選器：
 
 * 實作介面：
   * <xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncResultFilter>
@@ -433,17 +433,17 @@ FiltersSample.Filters.LogConstantFilter:Information: Method 'Hi' called
 
 ### <a name="iresultfilter-and-iasyncresultfilter"></a>IResultFilter 和 IAsyncResultFilter
 
-以下程式碼會顯示能新增 HTTP 標頭的結果動作篩選器：
+以下程式碼會顯示能新增 HTTP 標頭的結果篩選器：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/LoggingAddHeaderFilter.cs?name=snippet_ResultFilter)]
 
 執行的結果類型會取決於動作。 傳回檢視的動作會在執行中的 <xref:Microsoft.AspNetCore.Mvc.ViewResult> 裡包含處理中的所有 Razor。 API 方法可能在結果執行當中執行某種序列化。 深入了解[動作結果](xref:mvc/controllers/actions)
 
-動作動作篩選器只會針對成功的結果執行 - 動作或動作動作篩選器會執行動作結果。 當例外狀況動作篩選器處理例外狀況時，不會執行結果動作篩選器。
+動作篩選器只會針對成功的結果執行 - 動作或動作篩選器會執行動作結果。 當例外狀況篩選器處理例外狀況時，不會執行結果篩選器。
 
-藉由將 <xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutingContext.Cancel?displayProperty=fullName> 設為 `true`，<xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter.OnResultExecuting*?displayProperty=fullName> 方法可以縮短動作結果和後續結果動作篩選器的執行。 在縮短時寫入至回應物件，以避免產生空的回應。 在 `IResultFilter.OnResultExecuting` 中擲回例外狀況會：
+藉由將 <xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutingContext.Cancel?displayProperty=fullName> 設為 `true`，<xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter.OnResultExecuting*?displayProperty=fullName> 方法可以縮短動作結果和後續結果篩選器的執行。 在縮短時寫入至回應物件，以避免產生空的回應。 在 `IResultFilter.OnResultExecuting` 中擲回例外狀況會：
 
-* 導致無法執行動作結果和後續的動作篩選器。
+* 導致無法執行動作結果和後續的篩選器。
 * 視為失敗，而不是成功的結果。
 
 當 <xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter.OnResultExecuted*?displayProperty=fullName> 方法執行時：
@@ -459,24 +459,24 @@ If an exception was thrown **IN THE RESULT FILTER**, the response body is not se
 
  -->
 
-如果動作結果執行被另一個動作篩選器縮短，則 `ResultExecutedContext.Canceled` 會被設為 `true`。
+如果動作結果執行被另一個篩選器縮短，則 `ResultExecutedContext.Canceled` 會被設為 `true`。
 
-如果動作結果或後續的結果動作篩選器擲回例外狀況，則 `ResultExecutedContext.Exception` 會被設為非 Null 值。 將 `Exception` 設為 Null 實際上會「處理」例外狀況，並且使 ASP.NET Core 稍後不會在管線中重新擲回例外狀況。 並沒有可以在處理結果動作篩選器中的例外狀況時，將資料寫入回應的可靠方式。 當動作結果擲回例外狀況時，如果標頭已清除至用戶端，則沒有任何可靠的機制能傳送失敗碼。
+如果動作結果或後續的結果篩選器擲回例外狀況，則 `ResultExecutedContext.Exception` 會被設為非 Null 值。 將 `Exception` 設為 Null 實際上會「處理」例外狀況，並且使 ASP.NET Core 稍後不會在管線中重新擲回例外狀況。 並沒有可以在處理結果篩選器中的例外狀況時，將資料寫入回應的可靠方式。 當動作結果擲回例外狀況時，如果標頭已清除至用戶端，則沒有任何可靠的機制能傳送失敗碼。
 
-針對 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncResultFilter> 而言，對 <xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutionDelegate> 上的 `await next` 的呼叫會執行任何後續的結果動作篩選器和動作結果。 若要縮短，請將 [ResultExecutingContext.Cancel](xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutingContext.Cancel) 設定為 `true`，並且不要呼叫 `ResultExecutionDelegate`：
+針對 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncResultFilter> 而言，對 <xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutionDelegate> 上的 `await next` 的呼叫會執行任何後續的結果篩選器和動作結果。 若要縮短，請將 [ResultExecutingContext.Cancel](xref:Microsoft.AspNetCore.Mvc.Filters.ResultExecutingContext.Cancel) 設定為 `true`，並且不要呼叫 `ResultExecutionDelegate`：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/MyAsyncResponseFilter.cs?name=snippet)]
 
-架構提供抽象 `ResultFilterAttribute`，其可被子類別化。 先前所示的 [AddHeaderAttribute](#add-header-attribute) 類別是結果動作篩選器屬性的範例。
+架構提供抽象 `ResultFilterAttribute`，其可被子類別化。 先前所示的 [AddHeaderAttribute](#add-header-attribute) 類別是結果篩選器屬性的範例。
 
 ### <a name="ialwaysrunresultfilter-and-iasyncalwaysrunresultfilter"></a>IAlwaysRunResultFilter 和 IAsyncAlwaysRunResultFilter
 
-<xref:Microsoft.AspNetCore.Mvc.Filters.IAlwaysRunResultFilter> 和 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncAlwaysRunResultFilter> 介面會宣告針對所有動作結果執行的 <xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter> 實作。 動作篩選器會套用至所有動作結果，除非：
+<xref:Microsoft.AspNetCore.Mvc.Filters.IAlwaysRunResultFilter> 和 <xref:Microsoft.AspNetCore.Mvc.Filters.IAsyncAlwaysRunResultFilter> 介面會宣告針對所有動作結果執行的 <xref:Microsoft.AspNetCore.Mvc.Filters.IResultFilter> 實作。 篩選器會套用至所有動作結果，除非：
 
 * 套用 <xref:Microsoft.AspNetCore.Mvc.Filters.IExceptionFilter> 或 <xref:Microsoft.AspNetCore.Mvc.Filters.IAuthorizationFilter> 並縮短回應。
-* 例外狀況動作篩選器會產生動作結果來處理例外狀況。
+* 例外狀況篩選器會產生動作結果來處理例外狀況。
 
-`IExceptionFilter` 和 `IAuthorizationFilter` 以外的動作篩選器並不會縮短 `IAlwaysRunResultFilter` 和 `IAsyncAlwaysRunResultFilter`。
+`IExceptionFilter` 和 `IAuthorizationFilter` 以外的篩選器並不會縮短 `IAlwaysRunResultFilter` 和 `IAsyncAlwaysRunResultFilter`。
 
 例如，下列篩選一律會執行，並會在內容交涉失敗時，為動作結果 (<xref:Microsoft.AspNetCore.Mvc.ObjectResult>) 設定「422 無法處理的實體」狀態碼：
 
@@ -484,9 +484,9 @@ If an exception was thrown **IN THE RESULT FILTER**, the response body is not se
 
 ### <a name="ifilterfactory"></a>IFilterFactory
 
-<xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory> 會實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata>。 因此，`IFilterFactory` 執行個體可用來在動作篩選器管線中任何位置作為 `IFilterMetadata` 執行個體。 當執行階段準備要叫用動作篩選器時，它會嘗試將它轉換成 `IFilterFactory`。 如果該轉換成功，系統會呼叫 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory.CreateInstance*> 方法來建立被叫用的 `IFilterMetadata` 執行個體。 因為在應用程式啟動時不需要明確設定精確的動作篩選器管線，所以這提供了具有彈性的設計。
+<xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory> 會實作 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata>。 因此，`IFilterFactory` 執行個體可用來作篩選器管線中任何位置作為 `IFilterMetadata` 執行個體。 當執行階段準備要叫用篩選器時，它會嘗試將它轉換成 `IFilterFactory`。 如果該轉換成功，系統會呼叫 <xref:Microsoft.AspNetCore.Mvc.Filters.IFilterFactory.CreateInstance*> 方法來建立被叫用的 `IFilterMetadata` 執行個體。 因為在應用程式啟動時不需要明確設定精確的篩選器管線，所以這提供了具有彈性的設計。
 
-可以使用自訂屬性實作作為另一種建立動作篩選器的方法，來實作 `IFilterFactory`：
+可以使用自訂屬性實作作為另一種建立篩選器的方法，來實作 `IFilterFactory`：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/AddHeaderWithFactoryAttribute.cs?name=snippet_IFilterFactory&highlight=1,4,5,6,7)]
 
@@ -510,7 +510,7 @@ This section needs to be rewritten.
 What's a non-named attribute?
 -->
 
-實作 `IFilterFactory` 的動作篩選器很適合用於下列類型的動作篩選器：
+實作 `IFilterFactory` 的篩選器很適合用於下列類型的篩選器：
 
 * 不需要傳遞參數。
 * 有需要由 DI 滿足的建構函式相依性。
@@ -525,11 +525,11 @@ What's a non-named attribute?
 
 在上述程式碼中，使用 `[SampleActionFilter]` 來裝飾方法是套用 `SampleActionFilter` 的建議方法。
 
-## <a name="using-middleware-in-the-filter-pipeline"></a>在動作篩選器管線中使用中介軟體
+## <a name="using-middleware-in-the-filter-pipeline"></a>在篩選器管線中使用中介軟體
 
-資源動作篩選器的運作與[中介軟體](xref:fundamentals/middleware/index)相似之處在於，它們會圍繞管線中稍後的所有項目執行。 但動作篩選器與中介軟體不同之處在於它們是 ASP.NET Core 執行階段的一部分，這表示它們能存取 ASP.NET Core 內容和建構。
+資源篩選器的運作與[中介軟體](xref:fundamentals/middleware/index)相似之處在於，它們會圍繞管線中稍後的所有項目執行。 但篩選器與中介軟體不同之處在於它們是 ASP.NET Core 執行階段的一部分，這表示它們能存取 ASP.NET Core 內容和建構。
 
-若要使用中介軟體作為動作篩選器，請建立一個具有 `Configure` 方法的類型，其能指定要插入到動作篩選器管線的中介軟體。 以下範例會使用當地語系化中介軟體來建立某個要求目前的文化特性：
+若要使用中介軟體作為篩選器，請建立一個具有 `Configure` 方法的類型，其能指定要插入到篩選器管線的中介軟體。 以下範例會使用當地語系化中介軟體來建立某個要求目前的文化特性：
 
 [!code-csharp[](./filters/sample/FiltersSample/Filters/LocalizationPipeline.cs?name=snippet_MiddlewareFilter&highlight=3,21)]
 
@@ -537,9 +537,9 @@ What's a non-named attribute?
 
 [!code-csharp[](./filters/sample/FiltersSample/Controllers/HomeController.cs?name=snippet_MiddlewareFilter&highlight=2)]
 
-中介軟體動作篩選器與資源動作篩選器在相同的動作篩選器管線階段執行：模型繫結之前和管線的其餘部分之後。
+中介軟體篩選器與資源篩選器在相同的篩選器管線階段執行：模型繫結之前和管線的其餘部分之後。
 
 ## <a name="next-actions"></a>後續動作
 
 * 請參閱[Razor Pages 的篩選方法](xref:razor-pages/filter)
-* 若要嘗試使用動作篩選器，請[下載、測試及修改 GitHub 範例](https://github.com/aspnet/AspNetCore.Docs/tree/master/aspnetcore/mvc/controllers/filters/sample) \(英文\)。
+* 若要嘗試使用篩選器，請[下載、測試及修改 GitHub 範例](https://github.com/aspnet/AspNetCore.Docs/tree/master/aspnetcore/mvc/controllers/filters/sample) \(英文\)。
